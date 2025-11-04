@@ -239,16 +239,39 @@ def extract_from_xlsx_or_csv(filename: str, content: bytes) -> str:
         raise HTTPException(500, "Falta dependencia pandas/openpyxl para XLSX/CSV")
     ext = (filename or "").lower().split(".")[-1]
     bio = io.BytesIO(content)
+
+    # nuevos límites
+    CSV_MAX_ROWS = int(os.getenv("CSV_MAX_ROWS", "2000"))
+    XLSX_MAX_ROWS = int(os.getenv("XLSX_MAX_ROWS", "2000"))
+    XLSX_MAX_SHEETS = int(os.getenv("XLSX_MAX_SHEETS", "3"))
+
     if ext == "csv":
-        df = pd.read_csv(bio, dtype=str, engine="python", keep_default_na=False, na_values=[])
-        return df.to_csv(index=False)
+        # lee en chunks o recorta tras CSV_MAX_ROWS
+        df = pd.read_csv(
+                      bio,
+                    dtype=str,
+                    engine="python",
+                    nrows=CSV_MAX_ROWS,
+                    keep_default_na=False,
+                    na_values=[],
+                    on_bad_lines="skip",        # ignora filas con columnas extra
+                    sep=None                    # autodetecta separador (coma, punto y coma, tab, etc.)
+                )
+
+        out = df.to_csv(index=False)
+        out = f"=== CSV procesado (máx {CSV_MAX_ROWS} filas, filas mal formateadas omitidas) ===\n" + out
+        return out
     else:
         xls = pd.ExcelFile(bio)
         parts = []
-        for sheet in xls.sheet_names:
-            df = xls.parse(sheet_name=sheet, dtype=str).fillna("")
-            parts.append(f"=== Hoja: {sheet} ===\n{df.to_csv(index=False)}")
+        for i, sheet in enumerate(xls.sheet_names[:XLSX_MAX_SHEETS]):
+            df = xls.parse(sheet_name=sheet, dtype=str, nrows=XLSX_MAX_ROWS).fillna("")
+            chunk = df.to_csv(index=False)
+            parts.append(f"=== Hoja: {sheet} (recortada a {len(df)} filas) ===\n{chunk}")
+        if len(xls.sheet_names) > XLSX_MAX_SHEETS:
+            parts.append(f"=== Aviso: {len(xls.sheet_names)-XLSX_MAX_SHEETS} hojas omitidas por límite ===")
         return "\n\n".join(parts)
+
 
 def _pdfminer_text_by_pages(content: bytes) -> List[str]:
     """Devuelve lista de textos (uno por página) usando pdfminer.six."""
