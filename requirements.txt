@@ -1,0 +1,24 @@
+# --- Servidor principal (FastAPI) ---
+fastapi==0.115.2
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
+python-multipart==0.0.9
+
+# --- OCR local ---
+pillow==10.4.0
+pytesseract==0.3.13
+
+# --- Prechunking ---
+langchain-text-splitters==0.2.2
+
+# --- PDF: texto nativo + raster por página ---
+pdfminer.six==20240706
+pypdfium2==4.30.0
+# PyMuPDF (fitz) -> OPCIONAL. Omitido para evitar compilación en Windows/Py3.13
+
+# --- DOCX ---
+python-docx==1.1.2
+
+# --- XLSX / CSV ---
+pandas==2.2.3
+openpyxl==3.1.5
