@@ -345,12 +345,13 @@ def extract_pdf_with_policy(content: bytes,
 
     unified_text = "\n".join(unified_text_parts).strip()
     ocr_conf_avg = sum(ocr_confs) / len(ocr_confs) if ocr_confs else None
+    used_ocr = any(p.get("page_source") == "ocr" for p in pages_meta)
     page_meta = {
         "pages": pages_meta,
-        "ocr_engine": (OCR_ENGINE_NAME if OCR_ENDPOINT and ocr_mode != "off" else None),
-        "ocr_confidence_avg": ocr_conf_avg,
+        "ocr_engine": (OCR_ENGINE_NAME if (OCR_ENDPOINT and ocr_mode != "off" and used_ocr) else None),
+        "ocr_confidence_avg": ocr_conf_avg if used_ocr else None,
     }
-    if ocr_errors:
+    if ocr_errors and used_ocr:
         page_meta["ocr_errors"] = ocr_errors
     return unified_text, page_meta
 
