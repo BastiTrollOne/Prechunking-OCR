@@ -395,6 +395,32 @@ def extract_from_image(image_bytes: bytes,
     return t, page_meta
 
 # =========================
+# Helpers OCR limpieza
+import re
+import unicodedata
+
+def normalize_ocr_text(s: str) -> str:
+    if not s:
+        return s
+    # Unicode y tildes coherentes
+    s = unicodedata.normalize("NFC", s)
+
+    # Quitar espacios pegados tras signos/puntuación: "Lenguaje:claro" -> "Lenguaje: claro"
+    s = re.sub(r'(:|;|,)(\S)', r'\1 \2', s)
+
+    # Unir líneas duras dentro de párrafos: varias \n -> un salto, o espacio si no hay viñetas
+    s = re.sub(r'([^\n])\n(?!\n)', r'\1 ', s)         # salto simple -> espacio
+    s = re.sub(r'\n{2,}', '\n\n', s)                  # colapsar múltiples saltos
+
+    # Arreglos típicos de OCR español:
+    s = s.replace('¿ ', '¿').replace(' ¡', '¡')       # signos invertidos pegados
+    s = re.sub(r'(\S)\*', r'\1*', s)                  # asteriscos sueltos
+    s = re.sub(r'\s{2,}', ' ', s)                     # espacios múltiples
+
+    return s.strip()
+
+
+# =========================
 # Trazabilidad (páginas → spans)
 # =========================
 def build_page_spans(unified_text: str) -> List[Tuple[int, int, int]]:
@@ -497,6 +523,27 @@ def build_doc_and_chunk_metadata(filename: str,
 # =========================
 # Pipeline archivo → texto → chunks (LangChain)
 # =========================
+
+import re, unicodedata
+
+NORMALIZE_OCR = os.getenv("NORMALIZE_OCR", "true").lower() == "true"
+
+def normalize_ocr_text(s: str) -> str:
+    if not s:
+        return s
+    s = unicodedata.normalize("NFC", s)
+    # Espacio tras puntuación pegada por OCR: "Lenguaje:claro,sencillo" -> "Lenguaje: claro, sencillo"
+    s = re.sub(r'([:;,])(\S)', r'\1 \2', s)
+    # Saltos de línea simples → espacio; preserva párrafos dobles
+    s = re.sub(r'([^\n])\n(?!\n)', r'\1 ', s)
+    s = re.sub(r'\n{2,}', '\n\n', s)
+    # Ajustes típicos ES
+    s = s.replace('¿ ', '¿').replace(' ¡', '¡')
+    # Colapsa espacios múltiples
+    s = re.sub(r'\s{2,}', ' ', s)
+    return s.strip()
+
+
 def process_file_bytes(filename: str,
                        content_type: str,
                        raw: bytes,
@@ -522,8 +569,18 @@ def process_file_bytes(filename: str,
             unified_text, page_meta = extract_from_image(raw, ocr_mode)
         elif (content_type or "").startswith("text/"):
             unified_text = extract_from_txt(raw)
+        
         else:
             unified_text = extract_from_txt(raw)  # último recurso
+
+        # 🔹 Normalizar SOLO si es OCR/imagen/PDF (no aplicar a CSV/XLSX)
+    if NORMALIZE_OCR:
+        is_ocrish = (
+            name.endswith((".pdf", ".png", ".jpg", ".jpeg"))
+            or bool((page_meta or {}).get("ocr_engine"))  # hubo OCR en PDF auto/force
+        )
+        if is_ocrish:
+            unified_text = normalize_ocr_text(unified_text)
 
     page_spans = build_page_spans(unified_text)
     chunks = chunk_text(unified_text, chunk_size, chunk_overlap)
