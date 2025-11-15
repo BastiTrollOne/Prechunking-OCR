@@ -15,6 +15,12 @@ import base64
 import http.client
 from urllib.parse import urlparse
 
+# --- cargar .env muy temprano ---
+from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=Path(__file__).with_name(".env"), override=True)
+
+
 APP_VERSION = "upload-robusto-v3"
 print("[BOOT]", APP_VERSION)
 
